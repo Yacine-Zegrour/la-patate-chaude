@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="dela-fr-public-u8-xml">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/data/dela-fr-public-u8-xml.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
