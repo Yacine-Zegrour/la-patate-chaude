@@ -3,9 +3,7 @@ mod client;
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use serde::{Serialize, Deserialize};
-use md5::Digest;
-use std::{str};
+use shared::{Challenge, ChallengeAnswer, ChallengeResult, MD5HashCashOutput, Message, Subscribe};
 
 
 pub fn main() {
@@ -20,9 +18,7 @@ pub fn main() {
 
             receive(&mut stream, array);
             receive(&mut stream, array);
-            receive(&mut stream, array);
-            receive(&mut stream, array);
-            receive(&mut stream, array);
+
 
 
 
@@ -33,22 +29,30 @@ pub fn main() {
 
 
 fn send(stream: &mut TcpStream, message_to_send: Message) {
-    let message_to_serialized = serde_json::to_string(&message_to_send);
-    let message_to_serialized = message_to_serialized.unwrap();
-    let serialized_message_length_to_u32 = (message_to_serialized.len()) as u32;
+    let message = serde_json::to_string(&message_to_send);
+    let message_serialized = message.unwrap();
+    let message_length = (message_serialized.len()) as u32;
 
-    stream.write_all(&serialized_message_length_to_u32.to_be_bytes()).unwrap();
+    if let Err(err) = stream.write_all(&message_length.to_be_bytes())
+    {
+        println!("{err}");
+    }
 
-    stream.write_all(&message_to_serialized.as_bytes()).unwrap();
-
+    if let Err(err) =  stream.write_all(&message_serialized.as_bytes())
+    {
+        println!("{err}");
+    }
 }
 
 fn receive(stream: &mut TcpStream, mut array: [u8; 4]) {
-    stream.read( &mut array).unwrap();
+    if let Err(err) = stream.read( &mut array)
+    {
+        println!("{err}");
+    }
 
-    let size_message: u32 = u32::from_be_bytes(array);
-    let size_message = size_message as usize;
-    let mut vector = vec![0; size_message];
+    let message_length_from_bytes: u32 = u32::from_be_bytes(array);
+    let message_length = message_length_from_bytes as usize;
+    let mut vector = vec![0; message_length];
 
     if let Err(err) = stream.read(&mut vector)
     {
@@ -64,7 +68,7 @@ fn receive(stream: &mut TcpStream, mut array: [u8; 4]) {
     match message {
         Message::Hello => {}
         Message::Welcome(_) => {
-            let subscribe = Message::Subscribe(Subscribe { name: "Warda".to_string()});
+            let subscribe = Message::Subscribe(Subscribe { name: "Warda_bis".to_string()});
             send(stream, subscribe);
         }
         Message::Subscribe(_) => {
@@ -77,15 +81,14 @@ fn receive(stream: &mut TcpStream, mut array: [u8; 4]) {
             println!("Result:{:?}",challenge);
             match challenge {
                 Challenge::MD5HashCash(input) => {
-                    println!("Result:{:?}",input.message);
-
-
-
-                } }
-
-
+                    let md5 = md5hash_cash(input.comp, input.message);
+                    let answer = ChallengeAnswer::MD5HashCash(MD5HashCashOutput { seed: md5.0 as u64, hashcode: md5.1 });
+                    let result = ChallengeResult { answer, next_target: "".to_string() };
+                    let message = Message::ChallengeResult(result);
+                    send(stream, message);
+                }}
         }
-        Message::EndOfGame(input) => {
+        Message::EndOfGame(_input) => {
 
         }
         Message::PublicLeaderBoard(subscribe) => {
@@ -95,128 +98,61 @@ fn receive(stream: &mut TcpStream, mut array: [u8; 4]) {
         _ => {}
     }
 
-
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum SubscribeError {
-    AlreadyRegistered,
-    InvalidName
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum SubscribeResult {
-    Ok,
-    Err(SubscribeError)
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Welcome{
-    version: i32
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Subscribe{
-    name: String
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Message {
-    Hello,
-    Welcome(Welcome),
-    Subscribe(Subscribe),
-    SubscribeResult(SubscribeResult),
-    PublicLeaderBoard(PublicLeaderBoard),
-    Challenge(Challenge),
-    ChallengeResult(ChallengeResult),
-     ChallengeAnswer(ChallengeAnswer),
-    RoundSummary(RoundSummary),
-    EndOfGame(EndOfGame),
-    MD5HashCashInput(MD5HashCashInput)
+fn check_seed(hash: String, comp: u32) -> bool {
+    let mut index = 0;
+    for c in hash.chars() {
+        if c == '1' && index < comp {
+            print!("false\n");
+            return false;
+        } else if index >= comp {
+            print!("succeed");
+            return true;
+        }
+        index += 1;
+    }
+    return false;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PublicLeaderBoard(Vec<PublicPlayer>);
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PublicPlayer {
-    name: String,
-    stream_id: String,
-    score: i32,
-    steps: u32,
-    is_active: bool,
-    total_used_time: f64
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Challenge {
-    MD5HashCash(MD5HashCashInput),
+fn to_binary(c: char) -> String {
+    let b = match c {
+        '0' => "0000",
+        '1' => "0001",
+        '2' => "0010",
+        '3' => "0011",
+        '4' => "0100",
+        '5' => "0101",
+        '6' => "0110",
+        '7' => "0111",
+        '8' => "1000",
+        '9' => "1001",
+        'A' => "1010",
+        'B' => "1011",
+        'C' => "1100",
+        'D' => "1101",
+        'E' => "1110",
+        'F' => "1111",
+        _ => "",
+    };
+    return String::from(b);
 }
 
 
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChallengeResult {
-    pub answer: ChallengeAnswer,
-    pub next_target: String
+pub fn md5hash_cash(comp: u32, message: String) -> (u64, String) {
+    let mut result = false;
+    let mut seed = 0;
+    let mut hash_code: String = "".to_string();
+
+    while result == false {
+        let trans_seed =format!("{}{}\n", seed, message);//concatenate the seed
+        let digest = md5::compute(trans_seed);
+        hash_code = format!("{:032X}", digest);
+        let hash: String = hash_code.chars().map(to_binary).collect();
+        result = check_seed(hash, comp);
+        seed += 1;
+    }
+    return (seed as u64, hash_code);
 }
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum ChallengeValue {
-    Unreachable,
-    Timeout,
-    BadResult(BadResult),
-    OK(Ok)
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BadResult {
-    used_time: f64,
-    next_target: String
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Ok {
-    used_time: f64,
-    next_target: String
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MD5HashCashInput {
-    complexity: u32,
-    message: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MD5HashCashOutput {
-    pub seed: u64,
-    pub hashcode: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RoundSummary {
-    challenge: String,
-    chain: Vec<ReportedChallengeResult>
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ReportedChallengeResult {
-    name: String,
-    value: ChallengeValue
-}
-#[derive(Debug, Serialize, Deserialize)]
-pub enum ChallengeAnswer {
-    MD5HashCash(MD5HashCashOutput)
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EndOfGame {
-    leader_board: PublicLeaderBoard,
-}
-
-
-
-
-
-
