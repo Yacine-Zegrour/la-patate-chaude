@@ -65,7 +65,7 @@ fn receive(stream: &mut TcpStream, mut array: [u8; 4]) {
     match message {
         Message::Hello => {}
         Message::Welcome(_) => {
-            let subscribe = Message::Subscribe(Subscribe { name: "Wardaaa".to_string() });
+            let subscribe = Message::Subscribe(Subscribe { name: "Wardaaaa".to_string() });
             send(stream, subscribe);
         }
         Message::Subscribe(_) => {}
